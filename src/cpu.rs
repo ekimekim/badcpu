@@ -1,3 +1,6 @@
+
+use std::fmt;
+
 use super::memory::Memory;
 
 pub struct Cpu<'a, M: Memory> {
@@ -146,5 +149,19 @@ impl<'a, M: Memory> Cpu<'a, M> {
 		// advance IP and immediate regs
 		self.reg_ip = self.reg_ip.wrapping_add(1);
 		self.reg_i = (self.reg_i << 4) + new_immediate;
+	}
+}
+
+impl<'a, M: Memory> fmt::Debug for Cpu<'a, M> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Cpu")
+			.field("condition", &self.condition)
+			.field("reg_i", &self.reg_i)
+			.field("reg_a", &self.reg_a)
+			.field("reg_ip", &self.reg_ip)
+			.field("reg_p", &self.reg_p)
+			.field("bank_ip", &self.bank_ip)
+			.field("bank_p", &self.bank_p)
+			.finish()
 	}
 }

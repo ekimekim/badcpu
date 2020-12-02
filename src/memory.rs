@@ -23,20 +23,21 @@ pub struct SimpleMemory {
 
 impl Memory for SimpleMemory {
 	fn read(&self, bank: u8, addr: u8) -> u8 {
-		let index = ((bank as u16) << 8) | (addr as u16);
-		self.data[index]
+		self.data[Self::to_index(bank, addr)]
 	}
 	fn write(&mut self, bank: u8, addr: u8, value: u8) {
-		let index = ((bank as u16) << 8) | (addr as u16);
-		self.data[index] = value;
+		self.data[Self::to_index(bank, addr)] = value;
 	}
 }
 
 impl SimpleMemory {
 	pub fn new(initial: &[u8]) -> Self {
-		let data = [0u8; 65536];
+		let mut data = [0u8; 65536];
 		// This will panic if initial.len() > 65536
 		data[..initial.len()].copy_from_slice(initial);
 		SimpleMemory{data}
+	}
+	fn to_index(bank: u8, addr: u8) -> usize {
+		(((bank as u16) << 8) | (addr as u16)).into()
 	}
 }
