@@ -18,14 +18,16 @@ struct Bank {
 
 // Symbols get replaced by their result. They may take arguments.
 // Replacements happen at the AST layer, not strings.
-// Symbols are expanded outer-first, ie. f(g) -> g+h would expand f first, then g, then h.
+// Symbols are expanded outer first (ie. symbols in a macro are only expanded after the macro itself),
+// with macro args expanding before the macro is.
+// eg. f(g) -> g+h would expand g first, then f, then h.
 enum Symbol {
 	// Locations expand to a Ast::Location node which may be used in a bank() builtin,
 	// but will be coerced to the address if used otherwise.
 	Location(Ast::Location),
 	// Macros expand directly to a result AST
 	Macro {
-		params: Vec<Ast::Identifier>,
+		params: Vec<String>,
 		body: Ast::Node,
 	},
 	// Builtins call a rust function to return a calculated value
@@ -50,7 +52,7 @@ impl Symbol {
 		}
 	}
 
-	fn expand_ast(params: &[Ast::Identifer], body: &Ast::Node, args: &[Ast::Node]) {
+	fn expand_ast(params: &[String], body: &Ast::Node, args: &[Ast::Node]) {
 		unimplemented!() // TODO
 	}
 }
@@ -108,8 +110,26 @@ impl Assembler {
 	}
 
 	// Recursively expands all nodes in the given AST, returning a transformed AST
-	fn expand_node(&self, node: Ast::Node) -> Result<Ast::Node, AssemblyError> {
-		// TODO
+	fn expand_node(&self, node: Ast::Node, depth: usize) -> Result<Ast::Node, AssemblyError> {
+		match node {
+			// Call includes operators, macros, anything that takes an arg.
+			Ast::Node::Call(ident, children) => {
+				// Args are expanded first
+				// TODO for each child, expand_node(child) and build new list of expanded
+				// Then the actual call
+				let expanded = self.expand_symbol(ident, &children)?;
+				// We may need to then expand the results
+				self.expand_node(expanded, depth + 1)
+			}
+			// Identifiers are treated as zero-arg calls
+			Ast::Node::Identifier(ident) => {
+				let expanded = self.expand_symbol(ident, &[])?;
+				// We may need to then expand the results
+				self.expand_node(expanded, depth + 1)
+			},
+			// Anything else is passed unchanged
+			// TODO
+		}
 	}
 
 	// Builtin definitions
