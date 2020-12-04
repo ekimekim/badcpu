@@ -86,37 +86,41 @@ impl Assembler {
 
 	// Takes an Ast chunk consisting of any number of statements, expands any symbols,
 	// and updates the assembler state accordingly.
-	fn ingest(&mut self, chunk: Ast::Node) -> Result<(), AssemblyError> {
-		let expanded = self.expand_node(chunk)?;
-		let statements: Vec<Ast::Statement> = Vec::new();
-		collect_statements(&mut statements, expanded)?;
-		for statement in statements {
-			// TODO
-		}
-	}
-
-	// Traverse any depth of Sequence nodes and flatten into a list of Statement nodes
-	fn collect_statements(statements: &mut Vec<Ast::Statement>, node: Ast::Node) -> Result<(), AssemblyError> {
-		match node {
-			Ast::Sequence(children) => {
-				for child in children {
-					collect_statements(statements, child)?;
-				}
-			},
-			statement @ Ast::Statement => {
-				statements.push(statement);
-			}
-			_ => {
-				unimplemented!() // TODO error - not a statement
-			}
-		};
-	}
-
-	// Recursively expands all nodes in the given AST, returning a transformed AST
-	fn expand_node(&self, node: Ast::Node, depth: usize) -> Result<Ast::Node, AssemblyError> {
+	fn ingest(&mut self, chunk: Ast::Node, depth: usize) -> Result<(), AssemblyError> {
 		if depth > MAX_EXPANSION_DEPTH {
 			unimplemented!() // TODO error
+		};
+
+		// We need to be careful here so that we ingest each statement fully before attempting
+		// to expand the next statement (as it may rely on eg. a symbol defined in the prev statement)
+		match node {
+			// If given a sequence of statements, ingest each in turn
+			Ast::Node::Sequence(children) =>
+				children.into_iter().map(|child| self.ingest(child, depth + 1)).collect(),
+			// If given a symbol, attempt to expand it and ingest the result.
+			// Note we do not expand the expanded contents, unlike when expanding symbols in expressions.
+			// This is because if it expands to a sequence, we need to ingest the contents one-by-one.
+			Ast::Node::Symbol(ident, args) => {
+				let args = args.into_iter().
+					map(|arg| self.expand_expression(arg, depth + 1))
+					.collect()?;
+				let expanded = self.expand_symbol(ident, &args)?;
+				self.ingest(expanded, depth + 1)
+			},
+			// The actual meat of the ingestion work, handling a single statement
+			Ast::Node::Statement => unimplemented!(),
+			// Anything else is a syntax error
+			_ => unimplemented!(), // TODO error
 		}
+	}
+
+
+	// Recursively expands all nodes in the given AST, returning a transformed AST.
+	// Only handles expressions.
+	fn expand_expression(&self, node: Ast::Node, depth: usize) -> Result<Ast::Node, AssemblyError> {
+		if depth > MAX_EXPANSION_DEPTH {
+			unimplemented!() // TODO error
+		};
 
 		// Children are expanded first. For calls, this is the args. For others, this is just
 		// all sub-parts.
