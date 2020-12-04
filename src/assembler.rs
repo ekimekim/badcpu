@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
 
+const MAX_EXPANSION_DEPTH: usize = 1024;
+
+
 // State needed on a line-to-line basis in assembler
 struct Assembler {
 	bank_number: u8,
@@ -111,13 +114,21 @@ impl Assembler {
 
 	// Recursively expands all nodes in the given AST, returning a transformed AST
 	fn expand_node(&self, node: Ast::Node, depth: usize) -> Result<Ast::Node, AssemblyError> {
-		match node {
-			// Call includes operators, macros, anything that takes an arg.
-			Ast::Node::Call(ident, children) => {
-				// Args are expanded first
-				// TODO for each child, expand_node(child) and build new list of expanded
-				// Then the actual call
-				let expanded = self.expand_symbol(ident, &children)?;
+		if depth > MAX_EXPANSION_DEPTH {
+			unimplemented!() // TODO error
+		}
+
+		// Children are expanded first. For calls, this is the args. For others, this is just
+		// all sub-parts.
+		let {value, children} = node;
+		let expanded_children = children.into_iter()
+			.map(|child| self.expand_node(child, depth + 1))
+			.collect()? // colects into Result<Vec<Ast::Node>, AssemblyError>
+
+		match value {
+			// Symbol includes identifiers, operators, macros
+			Ast::Node::Symbol(ident) => {
+				let expanded = self.expand_symbol(ident, &expanded_children)?;
 				// We may need to then expand the results
 				self.expand_node(expanded, depth + 1)
 			}
@@ -127,10 +138,13 @@ impl Assembler {
 				// We may need to then expand the results
 				self.expand_node(expanded, depth + 1)
 			},
-			// Anything else is passed unchanged
-			// TODO
+			// For anything else, pass through unchanged
+			n => Ok(n),
 		}
 	}
+
+	// Look up symbol and expand it
+	fn expand_symbol(
 
 	// Builtin definitions
 
