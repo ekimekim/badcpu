@@ -25,9 +25,9 @@ struct Bank {
 // with macro args expanding before the macro is.
 // eg. f(g) -> g+h would expand g first, then f, then h.
 enum Symbol {
-	// Locations expand to a Ast::Location node which may be used in a bank() builtin,
-	// but will be coerced to the address if used otherwise.
-	Location(Ast::Location),
+	// Locations expand to a 16-bit (bank, addr) value.
+	// Note in most cases this will end up coerced to a u8 when used
+	Location(u16),
 	// Macros expand directly to a result AST
 	Macro {
 		params: Vec<String>,
@@ -86,64 +86,41 @@ impl Assembler {
 
 	// Takes an Ast chunk consisting of any number of statements, expands any symbols,
 	// and updates the assembler state accordingly.
-	fn ingest(&mut self, chunk: Ast::Node, depth: usize) -> Result<(), AssemblyError> {
-		if depth > MAX_EXPANSION_DEPTH {
-			unimplemented!() // TODO error
-		};
-
-		// We need to be careful here so that we ingest each statement fully before attempting
-		// to expand the next statement (as it may rely on eg. a symbol defined in the prev statement)
-		match node {
-			// If given a sequence of statements, ingest each in turn
-			Ast::Node::Sequence(children) =>
-				children.into_iter().map(|child| self.ingest(child, depth + 1)).collect(),
-			// If given a symbol, attempt to expand it and ingest the result.
-			// Note we do not expand the expanded contents, unlike when expanding symbols in expressions.
-			// This is because if it expands to a sequence, we need to ingest the contents one-by-one.
-			Ast::Node::Symbol(ident, args) => {
-				let args = args.into_iter().
-					map(|arg| self.expand_expression(arg, depth + 1))
-					.collect()?;
-				let expanded = self.expand_symbol(ident, &args)?;
-				self.ingest(expanded, depth + 1)
-			},
-			// The actual meat of the ingestion work, handling a single statement
-			Ast::Node::Statement => unimplemented!(),
-			// Anything else is a syntax error
-			_ => unimplemented!(), // TODO error
-		}
+	fn ingest(&mut self, chunk: Ast::Node) -> Result<(), AssemblyError> {
+		eval_node(chunk, 0)?;
+		Ok(())
 	}
 
-
-	// Recursively expands all nodes in the given AST, returning a transformed AST.
-	// Only handles expressions.
-	fn expand_expression(&self, node: Ast::Node, depth: usize) -> Result<Ast::Node, AssemblyError> {
+	// Recursively evaluates all nodes in the given AST, returning a transformed AST (the expression result)
+	// and mutating assembler state if needed.
+	fn eval_node(&mut self, node: Ast::Node, depth: usize) -> Result<Ast::Node, AssemblyError> {
 		if depth > MAX_EXPANSION_DEPTH {
 			unimplemented!() // TODO error
-		};
+		}
 
-		// Children are expanded first. For calls, this is the args. For others, this is just
-		// all sub-parts.
+		// First, eval the children in order (order matters for side effects).
+		// In most cases all sub-nodes are children, but defining a macro is an exception,
+		// its body is stored seperately and is not evaluated.
 		let {value, children} = node;
-		let expanded_children = children.into_iter()
-			.map(|child| self.expand_node(child, depth + 1))
+		let children = children.into_iter()
+			.map(|child| self.eval_node(child, depth + 1))
 			.collect()? // colects into Result<Vec<Ast::Node>, AssemblyError>
 
 		match value {
-			// Symbol includes identifiers, operators, macros
+			// Symbol includes identifiers, operators/builtins and macros.
+			// We expand to their result, then evaluate the result.
 			Ast::Node::Symbol(ident) => {
-				let expanded = self.expand_symbol(ident, &expanded_children)?;
-				// We may need to then expand the results
-				self.expand_node(expanded, depth + 1)
-			}
-			// Identifiers are treated as zero-arg calls
-			Ast::Node::Identifier(ident) => {
-				let expanded = self.expand_symbol(ident, &[])?;
-				// We may need to then expand the results
-				self.expand_node(expanded, depth + 1)
+				let expanded = self.expand_symbol(ident, &children)?;
+				self.eval_node(expanded, depth + 1)
 			},
-			// For anything else, pass through unchanged
-			n => Ok(n),
+			// Sequences return their last value
+			Ast::Node::Sequence => Ok(children.pop()),
+			// Primitive values return themselves
+			Ast::Node::Integer | Ast::Node::Identifier => Ok(Ast::Node{value, children}),
+			// Labels are added to the symbols table, they return nothing
+			Ast::Node::Label()
+			// Symbol definitions are added to the symbols table then return their name as an identifier.
+			Ast::Node::Definition
 		}
 	}
 
@@ -162,12 +139,4 @@ impl Assembler {
 		Ok(Ast::Node::Int(self.bank_number))
 	}
 
-	// bank(location) returns the bank as a number, error for non-locations
-	fn builtin_bank(&self, args: &[Ast::Node]) -> Result<Ast::Node, AssemblyError> {
-		if let Ast::Node::Location(location) = args[0] {
-			Ok(Ast::Node::Int(location.addr))
-		} else {
-			unimplemented!() // TODO
-		}
-	}
 }
