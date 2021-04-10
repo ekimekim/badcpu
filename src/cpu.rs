@@ -83,7 +83,7 @@ impl<'a, M: Memory> Cpu<'a, M> {
 						} else {
 							// bit BASE ARG: bitwise op on each bit of base and arg,
 							// maps (base bit, arg bit) through bits 0-3 of I
-							// eg. I=1000 is bitwise AND, I=111 is OR
+							// eg. I=1000 is bitwise AND, I=1110 is OR
 							let mut value = 0u8;
 							for bit in 0..8 {
 								// combine the two bits into a value 0-3
@@ -147,6 +147,7 @@ impl<'a, M: Memory> Cpu<'a, M> {
 			}
 		}
 		// advance IP and immediate regs
+		// TODO don't advance IP if IP was modified this cycle
 		self.reg_ip = self.reg_ip.wrapping_add(1);
 		self.reg_i = (self.reg_i << 4) + new_immediate;
 	}
