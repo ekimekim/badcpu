@@ -1,0 +1,10 @@
+# basic test, sum values 1 to 10 then halt
+immd 10
+inc P # P = 10
+immd 0 # start of loop. wait for prev immd to clear
+onto A P # A += P
+immd 1
+!dec P # P -= 1, set cond on underflow
+-immd 5
+-dec IP # ip -= 5, returning to start of loop
++halt
