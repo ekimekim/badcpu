@@ -40,27 +40,33 @@ impl<'a, M: Memory> Cpu<'a, M> {
 		}
 	}
 
-	fn write_reg(&mut self, selector: u8, value: u8) {
+	// Note that instead of updating reg_ip directly, we take in a &mut new_ip that may be modified.
+	// This is to assist the logic in step().
+	fn write_reg(&mut self, new_ip: &mut u8, selector: u8, value: u8) {
 		match selector {
 			0 => { self.reg_a = value; },
-			1 => { self.reg_ip = value; },
+			1 => { *new_ip = value; },
 			2 => { self.reg_p = value; },
 			3 => { self.memory.write(self.bank_p, self.reg_p, value); },
 			_ => panic!("Bad selector value"),
 		}
 	}
 
-	pub fn step(&mut self) {
+	// Returns true if this instruction triggered a halt
+	pub fn step(&mut self) -> bool {
 		let instruction = self.memory.read(self.bank_ip, self.reg_ip);
-		let mut new_immediate = 0u8;
+		// these values are defaults, specific instructions might override these
+		let mut new_immediate = self.reg_i << 4;
+		let mut new_ip = self.reg_ip.wrapping_add(1);
+		let mut halt = false;
 		// instruction only takes effect if condition flag matches first bit of instruction
 		if (instruction & 0x80) >> 7 == self.condition as u8 {
-			let new_cond: bool;
+			let new_cond: bool; // Compiler will ensure we explicitly set this in every branch
 			// Bits 4 and 5 indicate major opcode
 			match (instruction & 0x30) >> 4 {
 				// immd VALUE - bits 0-3 are the immediate value
 				0 => {
-					new_immediate = instruction & 0x0f;
+					new_immediate += instruction & 0x0f;
 					new_cond = false; // immd instruction always results in 0 cond
 				},
 				// 2-op instructions - bits 2-3 are arg1, bits 0-1 are arg2
@@ -100,7 +106,7 @@ impl<'a, M: Memory> Cpu<'a, M> {
 							new_cond = cond_value == ((self.reg_i & 0x80) >> 7);
 							value
 						};
-						self.write_reg((instruction & 0x0c) >> 2, result);
+						self.write_reg(&mut new_ip, (instruction & 0x0c) >> 2, result);
 					}
 				},
 				// All other ops are encoded under the 0x10 opcode,
@@ -114,7 +120,7 @@ impl<'a, M: Memory> Cpu<'a, M> {
 						} else {
 							arg.overflowing_sub(self.reg_i)
 						};
-						self.write_reg(instruction & 0x03, result);
+						self.write_reg(&mut new_ip, instruction & 0x03, result);
 						new_cond = overflow;
 					},
 					// mix ARG - for each pair of bits in ARG, set to another pair of bits
@@ -133,9 +139,24 @@ impl<'a, M: Memory> Cpu<'a, M> {
 						}
 						new_cond = result == 0;
 					},
-					// 4 no-op instructions - currently unused
-					0 => {
-						new_cond = false;
+					// Last 4 no-argument ops are encoded under 0x10-0x13, look up subminor opcode from bits 0-1.
+					0 => match instruction & 0x03 {
+						// load - I = A. Also flips condition flag.
+						0 => {
+							new_immediate = self.reg_a;
+							new_cond = !self.condition;
+						},
+						// halt - Stop execution. It may be resumed later, in which case this instruction
+						// will be observed to have behaved the same as immd 0 (ie. nop).
+						3 => {
+							halt = true;
+							new_cond = false;
+						},
+						// 2 no-op instructions - currently unused
+						1 | 2 => {
+							new_cond = false;
+						},
+						_ => unreachable!(),
 					},
 					_ => unreachable!(),
 				},
@@ -146,10 +167,11 @@ impl<'a, M: Memory> Cpu<'a, M> {
 				self.condition = new_cond;
 			}
 		}
-		// advance IP and immediate regs
-		// TODO don't advance IP if IP was modified this cycle
-		self.reg_ip = self.reg_ip.wrapping_add(1);
-		self.reg_i = (self.reg_i << 4) + new_immediate;
+		// update IP and immediate regs
+		self.reg_ip = new_ip;
+		self.reg_i = new_immediate;
+		// return whether we're halting
+		halt
 	}
 }
 

@@ -16,7 +16,11 @@ fn main() {
 	let mut cpu = cpu::Cpu::new(&mut memory);
 	println!("Initial state: {:?}", &cpu);
 	for step in 0..steps {
-		cpu.step();
+		let halt = cpu.step();
 		println!("After step {}: {:?}", step, &cpu);
+		if halt {
+			println!("Halted");
+			break;
+		}
 	}
 }
