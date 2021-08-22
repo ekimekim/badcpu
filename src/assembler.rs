@@ -3,6 +3,26 @@ use std::collections::HashMap;
 
 const MAX_EXPANSION_DEPTH: usize = 1024;
 
+/*
+Syntax:
+	comment: # text
+	instructions:
+		[+|-] [!] INSTR {ARGS}
+		+ means only run if cond set, - or omitted means only if cond unset
+		! means set cond
+		ARGS are register (A, IP, P, [P]) or number depending on instr
+	data: NUMBER {, NUMBER}
+	set current position: @[BANK:]NUMBER
+	define label: IDENT:
+		a label is equivalent to a zero-arg macro
+	define macro:
+		IDENT({ARGS}) { BODY }
+	apply macro:
+		IDENT {ARGS}
+		by default each word after IDENT will be parsed as a seperate arg,
+		override with (), eg. "outer (inner 1) 2" will invoke the inner macro
+		with arg 1, then invoke the outer macro with args of inner's result, and 2.
+*/
 
 // State needed on a line-to-line basis in assembler
 struct Assembler {
@@ -87,8 +107,13 @@ impl Assembler {
 	// Takes an Ast chunk consisting of any number of statements, expands any symbols,
 	// and updates the assembler state accordingly.
 	fn ingest(&mut self, chunk: Ast::Node) -> Result<(), AssemblyError> {
-		eval_node(chunk, 0)?;
-		Ok(())
+		let expanded = self.eval_node(chunk, 0)?;
+		self.ingest_node(expanded)
+	}
+
+	// Takes a fully-expanded Ast chunk and updates assember state from it
+	fn ingest_node(&mut self, chunk: Ast::Node) -> Result<(), AssemblyError> {
+		Ok(()) // TODO
 	}
 
 	// Recursively evaluates all nodes in the given AST, returning a transformed AST (the expression result)
@@ -113,14 +138,16 @@ impl Assembler {
 				let expanded = self.expand_symbol(ident, &children)?;
 				self.eval_node(expanded, depth + 1)
 			},
-			// Sequences return their last value
-			Ast::Node::Sequence => Ok(children.pop()),
 			// Primitive values return themselves
-			Ast::Node::Integer | Ast::Node::Identifier => Ok(Ast::Node{value, children}),
-			// Labels are added to the symbols table, they return nothing
-			Ast::Node::Label()
-			// Symbol definitions are added to the symbols table then return their name as an identifier.
-			Ast::Node::Definition
+			Ast::Node::Integer | Ast::Node::Atom => Ok(Ast::Node{value, children}),
+			// All the following are evaluated for side effects and return Ast::Node::Void.
+			// Sequence nodes have no effect except to eval all their children,
+			// which we've already done.
+			Ast::Node::Sequence => Ok(Ast::Node::Void),
+			// Labels are added to the symbols table
+			Ast::Node::Label
+			// Macro definitions are added to the symbols table
+			Ast::Node::Definition(ident, body)
 		}
 	}
 
