@@ -1,0 +1,20 @@
+# set up a routine at 1:254 which sets A and P to 2 and 42 then jumps to A:P
+1:0:
+load
+bank IP
+1:2:
+immd 2
+inc A
+immd 42
+inc P
+immd 0
+bit IP IP
+# set up bank 2 to recieve
+2:2:
+immd 12
+bit IP P
+2:42:
+halt
+# actual program start: jump to routine in 1:2
+immd 1
+bank IP
