@@ -55,11 +55,13 @@ For instructions that take a register, the register is encoded in two bits as fo
 - `10` -> `P`
 - `11` -> `[P]`, ie. the memory at address `P`
 
-For instructions that take two registers, the first one listed is encoded in the higher bits.
+For instructions that take two registers, the first one listed is encoded in the lower bits.
 So for example `onto A [P]` would be encoded as:
 ```
 onto  A  [P]
-  11  00 11
+       ↘↙
+       ↙↘
+  11  11 00
 ```
 
 ### IMMD nnnn

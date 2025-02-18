@@ -69,7 +69,7 @@ impl<'a, M: Memory> Cpu<'a, M> {
 					new_immediate += instruction & 0x0f;
 					new_cond = false; // immd instruction always results in 0 cond
 				},
-				// 2-op instructions - bits 2-3 are arg1, bits 0-1 are arg2
+				// 2-op instructions - bits 0-1 are arg1, bits 2-3 are arg2
 				2 | 3 => {
 					// both args being [P] is not allowed and instead sets banks
 					if instruction & 0x0f == 0x0f {
@@ -78,8 +78,8 @@ impl<'a, M: Memory> Cpu<'a, M> {
 						*dest_bank = self.reg_i;
 						new_cond = false;
 					} else {
-						let base = self.read_reg((instruction & 0x0c) >> 2);
-						let arg = self.read_reg(instruction & 0x03);
+						let base = self.read_reg(instruction & 0x03);
+						let arg = self.read_reg((instruction & 0x0c) >> 2);
 						let result = if instruction & 0x30 == 0x30 {
 							// onto BASE ARG: BASE += ARG + I, set cond if any overflow
 							let (value, first_overflow) = base.overflowing_add(arg);
@@ -106,7 +106,7 @@ impl<'a, M: Memory> Cpu<'a, M> {
 							new_cond = cond_value == ((self.reg_i & 0x80) >> 7);
 							value
 						};
-						self.write_reg(&mut new_ip, (instruction & 0x0c) >> 2, result);
+						self.write_reg(&mut new_ip, (instruction & 0x03) >> 2, result);
 					}
 				},
 				// All other ops are encoded under the 0x10 opcode,
@@ -186,10 +186,8 @@ impl<'a, M: Memory> Cpu<'a, M> {
 		let match_condition = (instruction & 0x80) >> 7 == self.condition;
 		let opcode = instruction & 0x3f;
 
-		// TODO simplify by swapping base and arg regs in 2-op opcodes
-		let base_reg =
-			if opcode & 0x20 == 0x20 { (opcode & 0x0c) >> 2 } else { opcode & 0x03 };
-		let arg_reg = opcode & 0x03;
+		let base_reg = opcode & 0x03;
+		let arg_reg = opcode & 0x0c;
 
 		let read_value = self.memory.read(self.bank_p, self.reg_p);
 		let reg_to_value = |reg| match reg {

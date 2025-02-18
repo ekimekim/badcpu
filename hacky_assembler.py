@@ -94,7 +94,7 @@ def main(filename):
 				value += parse_int(arg, nibble=True)
 			elif instr in ('bit', 'onto'):
 				src, dest = map(parse_reg, args)
-				value += (src << 2) + dest
+				value += (dest << 2) + src
 			elif instr in ('mix', 'inc', 'dec'):
 				arg, = args
 				value += parse_reg(arg)
